@@ -64,6 +64,13 @@ static class Tests {
             service.Restore(install,Log); Assert(Hash(target)==original,"Damaged derived cache never blocks restore from valid original");
             service.Apply(install,Log); Assert(service.Inspect(install).IsRussian,"Damaged derived cache is rebuilt from verified original");
             service.Restore(install,Log);
+            // A cache prepared by an earlier release must not reinstall its older translation.
+            string cache=Path.Combine(applied.BackupDirectory,"russian.asar"), manifest=Path.Combine(applied.BackupDirectory,"manifest.json");
+            File.Delete(cache); new AgRuArchive(backup).Build(cache,"// previous release overlay","{}","{}");
+            var json=new JavaScriptSerializer(); var record=json.Deserialize<Dictionary<string,object>>(File.ReadAllText(manifest));
+            record["PatchedSha256"]=Hash(cache); record["PayloadSha256"]=null; File.WriteAllText(manifest,json.Serialize(record));
+            service.Apply(install,Log); Assert(Hash(target)==patched,"Cache from an earlier release is rebuilt with the current translation");
+            service.Restore(install,Log);
             // Same version number, different build: separate immutable backup.
             Fixture(target,"1.0-test",false,true); string other=Hash(target); var second=service.Apply(install,Log);
             Assert(second.IsRussian&&second.BackupDirectory!=backed.BackupDirectory,"Different builds with same version have separate backups");

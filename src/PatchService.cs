@@ -14,6 +14,7 @@ namespace AntigravityRussian {
         public string Version;
         public string OriginalSha256;
         public string PatchedSha256;
+        public string PayloadSha256;
         public string CreatedUtc;
         public string[] Notes = new string[0];
     }
@@ -37,6 +38,8 @@ namespace AntigravityRussian {
                 using(var r=new StreamReader(s,Encoding.UTF8,true)) return r.ReadToEnd();
             }
         }
+        // Identifies the embedded translation, so a cache built by another release is never reused.
+        static string PayloadHash() { return AgRuArchive.Hash(Encoding.UTF8.GetBytes(Payload("localize-ui.js")+"\0"+Payload("dictionary.json")+"\0"+Payload("native-rules.json"))); }
         public static string FindInstallation() {
             return InstallationLocator.Find();
         }
@@ -126,14 +129,15 @@ namespace AntigravityRussian {
             if(!info.HasBackup) info=BackupCore(directory,log);
             if(info.UnknownTranslation) throw new InvalidOperationException("Сначала восстановите оригинал неизвестного русификатора.");
             string patched=Path.Combine(info.BackupDirectory,"russian.asar");
-            if(info.Record.PatchedSha256==null || !File.Exists(patched) || AgRuArchive.FileHash(patched)!=info.Record.PatchedSha256) {
+            string payload=PayloadHash();
+            if(info.Record.PatchedSha256==null || info.Record.PayloadSha256!=payload || !File.Exists(patched) || AgRuArchive.FileHash(patched)!=info.Record.PatchedSha256) {
                 string temp=Path.Combine(info.BackupDirectory,"build-"+Guid.NewGuid().ToString("N")+".asar");
                 try {
                     var original=new AgRuArchive(Path.Combine(info.BackupDirectory,"original.asar"));
                     original.Build(temp,Payload("localize-ui.js"),Payload("dictionary.json"),Payload("native-rules.json"));
                     if(File.Exists(patched)) File.Delete(patched); // Derived cache only; original is immutable.
                     File.Move(temp,patched);
-                    info.Record.PatchedSha256=AgRuArchive.FileHash(patched); info.Record.Notes=original.Notes.ToArray();
+                    info.Record.PatchedSha256=AgRuArchive.FileHash(patched); info.Record.PayloadSha256=payload; info.Record.Notes=original.Notes.ToArray();
                     WriteManifest(info.BackupDirectory,info.Record);
                 } finally { if(File.Exists(temp)) File.Delete(temp); }
             }

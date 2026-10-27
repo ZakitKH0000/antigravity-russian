@@ -9,6 +9,12 @@ foreach($pair in $data.GetEnumerator()) { if($pair.Value -isnot [string]) { thro
 $template=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'payload\localize-ui.template.js'))
 $marker='/* RU_DICTIONARY */'
 if($template.IndexOf($marker) -lt 0 -or $template.IndexOf($marker) -ne $template.LastIndexOf($marker)) { throw 'Invalid dictionary marker in overlay template.' }
-$overlay=$template.Replace($marker,$dictionary.Trim())
+$chatJson=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'payload\chat-labels.json'))
+$chatLabels=$serializer.DeserializeObject($chatJson)
+if($chatLabels -isnot [object[]] -or $chatLabels.Length -eq 0) { throw 'Chat labels must be a nonempty JSON array.' }
+foreach($label in $chatLabels) { if($label -isnot [string] -or -not $data.ContainsKey($label)) { throw ('Chat label is missing from the dictionary: '+$label) } }
+$chatMarker='/* RU_CHAT_LABELS */'
+if($template.IndexOf($chatMarker) -lt 0 -or $template.IndexOf($chatMarker) -ne $template.LastIndexOf($chatMarker)) { throw 'Invalid chat label marker in overlay template.' }
+$overlay=$template.Replace($marker,$dictionary.Trim()).Replace($chatMarker,$chatJson.Trim())
 [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'payload\localize-ui.js'),$overlay,(New-Object Text.UTF8Encoding($false)))
 Write-Output ('Dictionary synchronized: '+$data.get_Count()+' entries')
