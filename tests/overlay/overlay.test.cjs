@@ -84,6 +84,27 @@ async function agentSteps() {
     prefix.data = 'Creating'; await delay();
     assert.equal(d.querySelector('#prefix').firstChild, prefix);
     assert.equal(prefix.data, 'Создание');
+    // Summaries seen in a live 2.26.0 chat: group titles, counters and server suffixes.
+    const live = d.createElement('div');
+    live.innerHTML = '<span id="group">Explored file, ran commands</span><span id="group2">Ran command, edited files</span>' +
+        '<span id="asking">Asking</span><span id="count">1 question</span><span id="count5">5 questions</span>' +
+        '<span id="changed">2 files changed</span><span id="changed1">1 file changed</span><span id="working">Working</span>' +
+        '<span id="exit">search root for Prishchepka folder · Exited with code 1</span>' +
+        '<span id="finished">Search root for Prishchepka folder finished</span><span id="summary">search for prishchepka folder</span>' +
+        '<span id="odd">Explored the repository layout</span>';
+    response.append(live); await delay();
+    assert.equal(text(d, '#group'), 'Изучен файл, выполнены команды');
+    assert.equal(text(d, '#group2'), 'Выполнена команда, изменены файлы');
+    assert.equal(text(d, '#asking'), 'Агент задаёт');
+    assert.equal(text(d, '#count'), '1 вопрос');
+    assert.equal(text(d, '#count5'), '5 вопросов');
+    assert.equal(text(d, '#changed'), 'Изменено 2 файла');
+    assert.equal(text(d, '#changed1'), 'Изменён 1 файл');
+    assert.equal(text(d, '#working'), 'Выполняется');
+    assert.equal(text(d, '#exit'), 'search root for Prishchepka folder · код завершения 1');
+    assert.equal(text(d, '#finished'), 'Search root for Prishchepka folder — завершено');
+    assert.equal(text(d, '#summary'), 'search for prishchepka folder');
+    assert.equal(text(d, '#odd'), 'Explored the repository layout');
     const paragraph = d.createElement('p');
     paragraph.textContent = 'Created';
     response.append(paragraph); await delay();

@@ -15,6 +15,15 @@
     const scopes = {'in this conversation':'в этом чате','in this workspace':'в этой рабочей области','in this project':'в этом проекте','when not in a project':'вне проектов',globally:'глобально'};
     const permissionTargets = {'read access to this path':'доступ на чтение по этому пути','write access to this path':'доступ на запись по этому пути','reading this URL':'чтение этого адреса','executing actions on this URL':'выполнение действий по этому адресу','running this command':'выполнение этой команды','running this command outside the sandbox':'выполнение этой команды вне песочницы','using this MCP tool':'использование этого инструмента MCP','a one-time administrator (UAC) elevation':'однократные права администратора (UAC)','access to this resource':'доступ к этому ресурсу'};
     const permissionActions = {read:'чтение',write:'запись',run:'выполнение','run (unsandboxed)':'выполнение вне песочницы',use:'использование','grant administrator access for':'права администратора для',access:'доступ'};
+    const plural = (n, one, few, many) => n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many;
+    // Collapsed step group summary, e.g. "Explored file, ran commands, edited files".
+    const stepGroups = {explored:'изучено','explored file':'изучен файл','explored files':'изучены файлы','explored artifact':'изучен артефакт','explored artifacts':'изучены артефакты','ran command':'выполнена команда','ran commands':'выполнены команды','edited file':'изменён файл','edited files':'изменены файлы','edited artifact':'изменён артефакт','edited artifacts':'изменены артефакты'};
+    function stepGroup(key) {
+        const parts = key.split(', ').map((part) => stepGroups[part.toLowerCase()]);
+        if (!/^(Explored|Ran|Edited)\b/.test(key) || parts.some((part) => !part)) return null;
+        const text = parts.join(', ');
+        return text.charAt(0).toLocaleUpperCase('ru-RU') + text.slice(1);
+    }
     // Generated agent step, permission and question labels; the variable part is kept as is.
     const chatPatterns = [
         [/^Thought for (\d+)s$/, (m) => 'Рассуждение: ' + m[1] + ' с'],
@@ -22,7 +31,11 @@
         [/^Worked for (\d+[smhd](?: \d+[smhd])*)$/, (m) => 'Работа: ' + duration(m[1])],
         [/^Ran command: (.+)$/, (m) => 'Выполнена команда: ' + m[1]],
         [/^Waiting for command completion \(up to (\d+) seconds\)$/, (m) => 'Ожидание завершения команды (до ' + m[1] + ' с)'],
-        [/^Exited with code (-?\d+)\.$/, (m) => 'Завершено с кодом ' + m[1] + '.'],
+        [/^Exited with code (-?\d+)(\.?)$/, (m) => 'Завершено с кодом ' + m[1] + m[2]],
+        [/^(.+?) · Exited with code (-?\d+)$/, (m) => m[1] + ' · код завершения ' + m[2]],
+        [/^(Explored|Ran|Edited)\b.*$/, (m) => stepGroup(m[0])],
+        [/^(\d+) questions?$/, (m) => m[1] + ' ' + plural(+m[1], 'вопрос', 'вопроса', 'вопросов')],
+        [/^(\d+) files? changed$/, (m) => (+m[1] % 10 === 1 && +m[1] % 100 !== 11 ? 'Изменён ' : 'Изменено ') + m[1] + ' ' + plural(+m[1], 'файл', 'файла', 'файлов')],
         [/^Question (\d+) of (\d+)$/, (m) => 'Вопрос ' + m[1] + ' из ' + m[2]],
         [/^View (\d+) side questions?$/, (m) => 'Дополнительные вопросы: ' + m[1]],
         [/^Cancel Questionnaire and Stop the Agent \((.+)\)$/, (m) => 'Отменить опрос и остановить агента (' + m[1] + ')'],
@@ -50,7 +63,10 @@
     function chatLabel(value) {
         if (typeof value !== 'string' || !value.trim()) return value;
         const key = value.trim();
-        return replaceKey(value, key, chatLabels.has(key) ? translations[key] : chatPattern(key));
+        let result = chatLabels.has(key) ? translations[key] : chatPattern(key);
+        // Background task title from the language server: only the status suffix is ours.
+        if (result === null && / finished$/.test(key)) result = key.slice(0, -' finished'.length) + ' — завершено';
+        return replaceKey(value, key, result);
     }
     function translate(value) {
         if (typeof value !== 'string' || !value.trim()) return value;
