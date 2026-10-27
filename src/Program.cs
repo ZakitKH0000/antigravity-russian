@@ -6,8 +6,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Unofficial Russian interface patcher for Antigravity App")]
 [assembly: AssemblyCompany("Antigravity Russian contributors")]
 [assembly: AssemblyProduct("Antigravity Russian")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
 [assembly: ComVisible(false)]
 namespace AntigravityRussian {
     static class Program {

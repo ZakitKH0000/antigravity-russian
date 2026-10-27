@@ -74,9 +74,9 @@ namespace AntigravityRussian {
             result.UnknownTranslation=a.HasTranslation && !result.IsRussian;
             return result;
         }
-        static void ValidateRecord(string path,BackupRecord record) {
+        static void ValidateRecord(string path,BackupRecord record,bool requirePatch=false) {
             if(AgRuArchive.FileHash(Path.Combine(path,"original.asar"))!=record.OriginalSha256) throw new InvalidOperationException("Резервная копия повреждена. Файлы приложения не менялись.");
-            if(record.PatchedSha256!=null && AgRuArchive.FileHash(Path.Combine(path,"russian.asar"))!=record.PatchedSha256) throw new InvalidOperationException("Подготовленный русский архив повреждён. Файлы приложения не менялись.");
+            if(requirePatch && record.PatchedSha256!=null && AgRuArchive.FileHash(Path.Combine(path,"russian.asar"))!=record.PatchedSha256) throw new InvalidOperationException("Подготовленный русский архив повреждён. Файлы приложения не менялись.");
         }
         static void WriteManifest(string directory,BackupRecord record) {
             string path=Path.Combine(directory,"manifest.json"), temp=path+"."+Guid.NewGuid().ToString("N")+".tmp";
@@ -132,7 +132,7 @@ namespace AntigravityRussian {
             if(!info.HasBackup) info=BackupCore(directory,log);
             if(info.UnknownTranslation) throw new InvalidOperationException("Сначала восстановите оригинал неизвестного русификатора.");
             string patched=Path.Combine(info.BackupDirectory,"russian.asar");
-            if(info.Record.PatchedSha256==null) {
+            if(info.Record.PatchedSha256==null || !File.Exists(patched) || AgRuArchive.FileHash(patched)!=info.Record.PatchedSha256) {
                 string temp=Path.Combine(info.BackupDirectory,"build-"+Guid.NewGuid().ToString("N")+".asar");
                 try {
                     var original=new AgRuArchive(Path.Combine(info.BackupDirectory,"original.asar"));
@@ -186,7 +186,7 @@ namespace AntigravityRussian {
             System.IO.Directory.CreateDirectory(pending);
             File.Copy(originalPath,Path.Combine(pending,"original.asar")); File.Copy(installed.ArchivePath,Path.Combine(pending,"russian.asar"));
             var record=new BackupRecord { Version=installed.Version,OriginalSha256=originalHash,PatchedSha256=installed.Hash,CreatedUtc=DateTime.UtcNow.ToString("o"),Notes=new[]{"Imported audited v3 backup"} };
-            ValidateRecord(pending,record); WriteManifest(pending,record); System.IO.Directory.Move(pending,dest);
+            ValidateRecord(pending,record,true); WriteManifest(pending,record); System.IO.Directory.Move(pending,dest);
             log("Резервная копия прежней русификации импортирована; установка не менялась."); return Inspect(directory);
         }); }
     }

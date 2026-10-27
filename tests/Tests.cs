@@ -60,6 +60,9 @@ static class Tests {
             service.Apply(install,Log); Assert(Hash(target)==patched,"Repeated apply is idempotent");
             service.Restore(install,Log); Assert(Hash(target)==original,"Restore returns exact original");
             service.Apply(install,Log); Assert(Hash(target)==patched,"Version-specific cached reapply works");
+            File.AppendAllText(Path.Combine(applied.BackupDirectory,"russian.asar"),"damaged derived cache");
+            service.Restore(install,Log); Assert(Hash(target)==original,"Damaged derived cache never blocks restore from valid original");
+            service.Apply(install,Log); Assert(service.Inspect(install).IsRussian,"Damaged derived cache is rebuilt from verified original");
             service.Restore(install,Log);
             // Same version number, different build: separate immutable backup.
             Fixture(target,"1.0-test",false,true); string other=Hash(target); var second=service.Apply(install,Log);

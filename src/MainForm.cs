@@ -29,7 +29,7 @@ namespace AntigravityRussian {
             heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100)); heading.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,160));
             heading.Controls.Add(Label("Antigravity на русском",25,ink),0,0);
             heading.Controls.Add(Label("Резервная копия, перевод и откат — в одном приложении",10,muted),0,1);
-            var badge=Label("RU  /  версия 1.0",11,accent); badge.TextAlign=ContentAlignment.MiddleRight; heading.Controls.Add(badge,1,0); root.Controls.Add(heading,0,0);
+            var badge=Label("RU  /  версия 1.0.1",11,accent); badge.TextAlign=ContentAlignment.MiddleRight; heading.Controls.Add(badge,1,0); root.Controls.Add(heading,0,0);
             var location=new TableLayoutPanel { Dock=DockStyle.Fill,Padding=new Padding(16,8,16,8),BackColor=card,ColumnCount=2,RowCount=3,Margin=new Padding(0,0,0,8) };
             location.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100)); location.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,160));
             location.RowStyles.Add(new RowStyle(SizeType.Absolute,24)); location.RowStyles.Add(new RowStyle(SizeType.Absolute,34)); location.RowStyles.Add(new RowStyle(SizeType.Percent,100));
