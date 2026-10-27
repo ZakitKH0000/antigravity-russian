@@ -47,7 +47,8 @@
         [/^Requesting permission to (read|write|run \(unsandboxed\)|run|use|grant administrator access for|access) (.+)$/, (m) => 'Запрос разрешения: ' + permissionActions[m[1]] + ' — ' + m[2]],
         [/^Conflicts with your configured Ask permission: (.+)$/, (m) => 'Противоречит вашему правилу «Спрашивать»: ' + m[1]],
         [/^Requires manual confirmation: (.+)$/, (m) => 'Требуется подтверждение вручную: ' + m[1]],
-        [/^Cost summary: (.+)$/, (m) => 'Стоимость: ' + m[1]]
+        [/^Cost summary: (.+)$/, (m) => 'Стоимость: ' + m[1]],
+        [/^Welcome to ((?:Google )?Antigravity)$/, (m) => 'Добро пожаловать в ' + m[1]]
     ];
     function chatPattern(key) {
         for (const [pattern, replace] of chatPatterns) {

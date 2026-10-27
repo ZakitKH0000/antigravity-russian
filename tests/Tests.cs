@@ -70,9 +70,16 @@ static class Tests {
             var json=new JavaScriptSerializer(); var record=json.Deserialize<Dictionary<string,object>>(File.ReadAllText(manifest));
             record["PatchedSha256"]=Hash(cache); record["PayloadSha256"]=null; File.WriteAllText(manifest,json.Serialize(record));
             service.Apply(install,Log); Assert(Hash(target)==patched,"Cache from an earlier release is rebuilt with the current translation");
+            Assert(!service.Inspect(install).TranslationOutdated&&PatchService.RunningProcesses(install)==0,"Current translation is not reported as outdated");
+            record=json.Deserialize<Dictionary<string,object>>(File.ReadAllText(manifest)); record["PayloadSha256"]="previous-release"; File.WriteAllText(manifest,json.Serialize(record));
+            Assert(service.Inspect(install).TranslationOutdated,"Installed translation of an earlier release is reported as outdated");
+            var refreshed=service.UpdateTranslation(install,Log);
+            Assert(refreshed.IsRussian&&!refreshed.TranslationOutdated&&Hash(target)==patched,"Update translation restores the original and applies the current dictionary");
             service.Restore(install,Log);
             // Same version number, different build: separate immutable backup.
-            Fixture(target,"1.0-test",false,true); string other=Hash(target); var second=service.Apply(install,Log);
+            Fixture(target,"1.0-test",false,true); string other=Hash(target);
+            var updatedBuild=service.Inspect(install); Assert(updatedBuild.EarlierBuild&&!updatedBuild.HasBackup,"New Antigravity build after a translated one is reported as updated");
+            var second=service.Apply(install,Log);
             Assert(second.IsRussian&&second.BackupDirectory!=backed.BackupDirectory,"Different builds with same version have separate backups");
             Assert(second.Record.Notes.Any(n=>n.Contains("skipped")),"Changed optional native menu adapter is skipped and reported");
             service.Restore(install,Log); Assert(Hash(target)==other,"Second-build rollback does not downgrade to first build");

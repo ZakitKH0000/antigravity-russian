@@ -11,6 +11,8 @@ $sources=@(Get-ChildItem -LiteralPath (Join-Path $root 'src') -Filter '*.cs' | F
 $arguments=@('/nologo','/target:winexe','/platform:x64','/optimize+','/langversion:5','/utf8output',('/out:'+$output),('/win32manifest:'+(Join-Path $root 'assets\app.manifest')),('/win32icon:'+(Join-Path $root 'assets\app.ico')),
     '/reference:System.dll','/reference:System.Core.dll','/reference:System.Drawing.dll','/reference:System.Windows.Forms.dll','/reference:System.Web.Extensions.dll','/reference:System.IO.Compression.dll','/reference:System.IO.Compression.FileSystem.dll')
 foreach($name in @('localize-ui.js','dictionary.json','native-rules.json')) { $arguments+=('/resource:'+(Join-Path $root ('payload\'+$name))+',payload.'+$name) }
+# Embedded so a standalone EXE without .config keeps the same runtime settings.
+$arguments+=('/resource:'+(Join-Path $root 'assets\App.config')+',app.config')
 & $compiler @arguments @sources
 if($LASTEXITCODE -ne 0) { throw 'Application build failed.' }
 Copy-Item -LiteralPath (Join-Path $root 'assets\App.config') -Destination ($output+'.config') -Force

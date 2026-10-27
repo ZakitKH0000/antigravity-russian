@@ -21,8 +21,11 @@ namespace AntigravityRussian {
     public sealed class Installation {
         public string Directory, ArchivePath, ExePath, Version, Hash, BackupDirectory;
         public bool IsRussian, HasBackup, UnknownTranslation;
+        // Installed translation was built by another release; EarlierBuild: another Antigravity build was translated here.
+        public bool TranslationOutdated, EarlierBuild;
+        public int Records;
         public BackupRecord Record;
-        public string Status { get { return UnknownTranslation ? "Обнаружена неизвестная русификация" : IsRussian ? "Русский интерфейс установлен" : HasBackup ? "Резервная копия готова — можно русифицировать" : "Готово к резервному копированию"; } }
+        public string Status { get { return UnknownTranslation ? "Обнаружена другая русификация" : TranslationOutdated ? "Доступен новый перевод" : IsRussian ? "Русский интерфейс включён" : EarlierBuild ? "Antigravity обновился — включите русский снова" : "Английский интерфейс — можно русифицировать"; } }
     }
     public sealed class PatchService {
         public static readonly string DefaultDataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AntigravityRussian");
@@ -39,7 +42,8 @@ namespace AntigravityRussian {
             }
         }
         // Identifies the embedded translation, so a cache built by another release is never reused.
-        static string PayloadHash() { return AgRuArchive.Hash(Encoding.UTF8.GetBytes(Payload("localize-ui.js")+"\0"+Payload("dictionary.json")+"\0"+Payload("native-rules.json"))); }
+        static string payloadHash;
+        static string PayloadHash() { return payloadHash ?? (payloadHash=AgRuArchive.Hash(Encoding.UTF8.GetBytes(Payload("localize-ui.js")+"\0"+Payload("dictionary.json")+"\0"+Payload("native-rules.json")))); }
         public static string FindInstallation() {
             return InstallationLocator.Find();
         }
@@ -56,12 +60,14 @@ namespace AntigravityRussian {
             if(a.Name!="antigravity" || a.Product!="Antigravity") throw new InvalidOperationException("Эта установка не поддерживается. Нужен Antigravity App с Electron-архивом app.asar.");
             var result=new Installation { Directory=directory, ArchivePath=archive, ExePath=exe, Version=a.Version, Hash=AgRuArchive.FileHash(archive) };
             string records=Records(directory);
+            bool otherRecords=false;
             if(System.IO.Directory.Exists(records)) foreach(string recordRoot in System.IO.Directory.GetDirectories(records)) {
                 string folder=Path.GetFileName(recordRoot), manifest=Path.Combine(recordRoot,"manifest.json");
                 if(folder.Length!=64 || folder.Any(c=>!"0123456789abcdef".Contains(c)) || !File.Exists(manifest)) continue;
                 var record=Json().Deserialize<BackupRecord>(File.ReadAllText(manifest,Encoding.UTF8));
                 if(record==null || record.Schema!=1 || record.OriginalSha256!=folder) throw new InvalidOperationException("Повреждена запись резервной копии: "+recordRoot);
-                if(result.Hash!=record.OriginalSha256 && result.Hash!=record.PatchedSha256) continue;
+                result.Records++;
+                if(result.Hash!=record.OriginalSha256 && result.Hash!=record.PatchedSha256) { otherRecords=true; continue; }
                 ValidateRecord(recordRoot,record);
                 if(record.Version!=a.Version) throw new InvalidOperationException("Версия резервной копии не совпала с приложением.");
                 result.Record=record; result.BackupDirectory=recordRoot; result.HasBackup=true;
@@ -69,6 +75,8 @@ namespace AntigravityRussian {
                 break;
             }
             result.UnknownTranslation=a.HasTranslation && !result.IsRussian;
+            result.TranslationOutdated=result.IsRussian && result.Record.PayloadSha256!=PayloadHash();
+            result.EarlierBuild=!result.HasBackup && !result.UnknownTranslation && otherRecords;
             return result;
         }
         static void ValidateRecord(string path,BackupRecord record,bool requirePatch=false) {
@@ -81,6 +89,16 @@ namespace AntigravityRussian {
                 File.WriteAllText(temp,Json().Serialize(record),new UTF8Encoding(false));
                 if(File.Exists(path)) File.Replace(temp,path,null); else File.Move(temp,path);
             } finally { if(File.Exists(temp)) File.Delete(temp); }
+        }
+        // Processes of this installation that keep app.asar in use; unreadable ones count as running.
+        public static int RunningProcesses(string directory) {
+            string exe=Path.Combine(Path.GetFullPath(directory),"Antigravity.exe"); int count=0;
+            foreach(var process in Process.GetProcessesByName("Antigravity")) using(process) {
+                try { if(string.Equals(process.MainModule.FileName,exe,StringComparison.OrdinalIgnoreCase)) count++; }
+                catch(System.ComponentModel.Win32Exception) { count++; }
+                catch(InvalidOperationException) { if(!process.HasExited) count++; }
+            }
+            return count;
         }
         static void EnsureClosed(Installation info) {
             foreach(var process in Process.GetProcessesByName("Antigravity")) using(process) {
@@ -121,7 +139,15 @@ namespace AntigravityRussian {
             log("Создана и проверена резервная копия версии "+info.Version+".");
             return Inspect(directory);
         }
-        public Installation Apply(string directory,Action<string> log) { return Locked(()=> {
+        public Installation Apply(string directory,Action<string> log) { return Locked(()=>ApplyCore(directory,log)); }
+        // Replaces a translation built by an earlier release: verified original first, then the current dictionary.
+        public Installation UpdateTranslation(string directory,Action<string> log) { return Locked(()=> {
+            var info=Inspect(directory);
+            if(!info.TranslationOutdated) return ApplyCore(directory,log);
+            RestoreCore(directory,log);
+            return ApplyCore(directory,log);
+        }); }
+        Installation ApplyCore(string directory,Action<string> log) {
             var info=Inspect(directory);
             if(info.IsRussian) { log("Русский интерфейс уже установлен."); return info; }
             EnsureClosed(info); AgRuArchive.CheckExecutable(info.ExePath);
@@ -135,6 +161,9 @@ namespace AntigravityRussian {
                 try {
                     var original=new AgRuArchive(Path.Combine(info.BackupDirectory,"original.asar"));
                     original.Build(temp,Payload("localize-ui.js"),Payload("dictionary.json"),Payload("native-rules.json"));
+                    // The regional unlocker unpacks app.asar unless dist/main.js keeps the v2.4+ shell markers.
+                    if(RegionalUnlocker.KeepsDesktopShape(original.Text("dist/main.js")) && !RegionalUnlocker.KeepsDesktopShape(new AgRuArchive(temp).Text("dist/main.js")))
+                        throw new InvalidOperationException("Перевод изменил бы признаки, по которым анлокер confeden распознаёт Antigravity. Русификация отменена, файлы не изменены.");
                     if(File.Exists(patched)) File.Delete(patched); // Derived cache only; original is immutable.
                     File.Move(temp,patched);
                     info.Record.PatchedSha256=AgRuArchive.FileHash(patched); info.Record.PayloadSha256=payload; info.Record.Notes=original.Notes.ToArray();
@@ -145,15 +174,16 @@ namespace AntigravityRussian {
             log("Русификация установлена. Можно запускать Antigravity.");
             foreach(string note in info.Record.Notes.Where(n=>n.Contains("skipped") || n.Contains("Missing"))) log("Часть системных подписей новой версии пропущена: "+note);
             return Inspect(directory);
-        }); }
-        public Installation Restore(string directory,Action<string> log) { return Locked(()=> {
+        }
+        public Installation Restore(string directory,Action<string> log) { return Locked(()=>RestoreCore(directory,log)); }
+        Installation RestoreCore(string directory,Action<string> log) {
             var info=Inspect(directory);
             if(!info.IsRussian) { log("Архив этой установки не изменён данным русификатором. Замена не требуется."); return info; }
             EnsureClosed(info);
             Replace(info,Path.Combine(info.BackupDirectory,"original.asar"),info.Record.OriginalSha256,AgRuArchive.FileHash(info.ExePath));
             log("Оригинал версии "+info.Version+" восстановлен без понижения версии.");
             return Inspect(directory);
-        }); }
+        }
         static void Replace(Installation info,string source,string expected,string exeHash) {
             string temp=info.ArchivePath+".ru-"+Guid.NewGuid().ToString("N")+".tmp", rollback=temp+".rollback";
             try {

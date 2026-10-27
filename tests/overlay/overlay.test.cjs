@@ -128,7 +128,8 @@ async function permissionsAndQuestions() {
         </div>
         <div id="notification-title">The agent has a question for you:</div>
         <div id="notification-body">Click to respond to the questions.</div>
-        <div id="request">Requesting permission to read C:\\project\\a.txt</div>`);
+        <div id="request">Requesting permission to read C:\\project\\a.txt</div>
+        <div id="welcome">Welcome to Antigravity</div>`);
     const d = dom.window.document;
     assert.equal(text(d, '#question'), 'Разрешить выполнение этой команды?');
     assert.equal(text(d, '#model-question'), 'Allow me to delete the build folder?');
@@ -143,6 +144,7 @@ async function permissionsAndQuestions() {
     assert.equal(text(d, '#notification-title'), 'У агента есть вопрос:');
     assert.equal(text(d, '#notification-body'), 'Нажмите, чтобы ответить на вопросы.');
     assert.equal(text(d, '#request'), 'Запрос разрешения: чтение — C:\\project\\a.txt');
+    assert.equal(text(d, '#welcome'), 'Добро пожаловать в Antigravity');
     dom.window.close();
 }
 

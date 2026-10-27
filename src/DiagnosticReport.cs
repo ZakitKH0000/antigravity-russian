@@ -7,7 +7,7 @@ namespace AntigravityRussian {
         readonly List<string> events=new List<string>();
         public void Record(string operation,Exception error) {
             // Only allowlisted event IDs and exception type names. Never copy raw messages or UI logs.
-            string code=new[]{"inspect","backup","apply","restore","import","discover","update","launch"}.Contains(operation)?operation:"operation";
+            string code=new[]{"inspect","backup","apply","restore","import","discover","update","launch","rule"}.Contains(operation)?operation:"operation";
             events.Add(DateTime.UtcNow.ToString("HH:mm:ss")+"Z "+code+" / "+(error==null?"OK":error.GetType().Name+" 0x"+error.HResult.ToString("X8")));
             if(events.Count>12)events.RemoveAt(0);
         }

@@ -47,5 +47,36 @@ static class FeatureTests {
         check(AgRuArchive.FileHash(Path.Combine(stage,"previous.exe"))==oldHash,"Previous patcher executable retained for recovery");
         fails(()=>UpdateService.InstallPlan(planPath,updates,false),"Changed target checksum prevents stale update plan reuse");
         fails(()=>UpdateService.InstallPlan(planPath,root,false),"Update plan outside approved root rejected");
+        Options(root,check,fails,exe);
+    }
+    static void Options(string root,Action<bool,string> check,Action<Action,string> fails,string exe) {
+        string home=Path.Combine(root,"home"); var rule=new AgentLanguageRule(home);
+        rule.Install(); string ruleText=File.ReadAllText(rule.Path,Encoding.UTF8);
+        check(rule.Path==Path.Combine(home,".gemini","config","rules","antigravity-russian.md")&&ruleText.StartsWith("---\ntrigger: always_on\n")&&ruleText.Contains("на русском языке"),"Agent language rule written as always-on global Antigravity rule");
+        rule.Install(); check(rule.IsInstalled&&File.ReadAllText(rule.Path,Encoding.UTF8)==ruleText,"Repeated rule install is idempotent");
+        rule.Remove(); check(!File.Exists(rule.Path),"Agent language rule removed");
+        File.WriteAllText(rule.Path,"user rule");
+        fails(()=>rule.Install(),"User file with the same name is never overwritten"); rule.Remove();
+        check(File.ReadAllText(rule.Path)=="user rule","User file with the same name is never deleted");
+        var settings=AppSettings.Load(Path.Combine(root,"no-settings"));
+        check(settings.CheckUpdatesOnStart&&settings.AgentRussian&&settings.UpdateCheckDue(DateTime.UtcNow),"Default settings enable update check and Russian agent rule");
+        string data=Path.Combine(root,"settings"); settings.CheckUpdatesOnStart=false; settings.LastUpdateCheckUtc=DateTime.UtcNow.ToString("o"); settings.Save(data);
+        var loaded=AppSettings.Load(data); check(!loaded.CheckUpdatesOnStart&&!loaded.UpdateCheckDue(DateTime.UtcNow),"Settings persist and disabled update check stays off");
+        loaded.CheckUpdatesOnStart=true; check(!loaded.UpdateCheckDue(DateTime.UtcNow)&&loaded.UpdateCheckDue(DateTime.UtcNow.AddDays(1)),"Automatic update check runs at most once a day");
+        File.WriteAllText(AppSettings.FileFor(data),"{damaged"); check(AppSettings.Load(data).CheckUpdatesOnStart,"Damaged settings fall back to defaults");
+        const string shell="const ls=require('./languageServer'); const ipc=require('./ipcHandlers'); const menu={label: 'Новое окно'};";
+        check(RegionalUnlocker.KeepsDesktopShape(shell)&&!RegionalUnlocker.KeepsDesktopShape(shell+" getUserStatus();")&&!RegionalUnlocker.KeepsDesktopShape("require('./main')"),"Regional unlocker shell detection matches its v2.4+ rule");
+        string savedProxy=Environment.GetEnvironmentVariable("AG_LS_PROXY");
+        try {
+            var listener=new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback,0); listener.Start();
+            int port=((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+            Environment.SetEnvironmentVariable("AG_LS_PROXY","http://127.0.0.1:"+port);
+            check(RegionalUnlocker.ProxyProblem()==null,"Running unlocker proxy is not reported");
+            listener.Stop();
+            string problem=RegionalUnlocker.ProxyProblem();
+            check(problem!=null&&problem.Contains(port.ToString()),"Stopped unlocker proxy is reported with its port");
+        } finally { Environment.SetEnvironmentVariable("AG_LS_PROXY",savedProxy); }
+        using(var config=typeof(PatchService).Assembly.GetManifestResourceStream("app.config"))
+            check(config!=null&&new StreamReader(config).ReadToEnd().Contains("PerMonitorV2"),"Runtime settings are embedded for the standalone EXE");
     }
 }
