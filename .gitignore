@@ -1,0 +1,15 @@
+/bin/
+/dist/
+/work/
+/backups/
+/versions/
+*.asar
+*.asar.*
+*.user
+*.suo
+.vs/
+*.pfx
+*.p12
+*.log
+*.zip
+.DS_Store

@@ -1,0 +1,82 @@
+{
+  "dist/ipcHandlers.js": [
+    [
+      "showErrorBox('Cannot open folder',",
+      "showErrorBox('Не удалось открыть папку',"
+    ],
+    [
+      "message: 'Folder is on the Windows filesystem'",
+      "message: 'Папка находится в файловой системе Windows'"
+    ],
+    [
+      "title: 'Open workspace'",
+      "title: 'Открыть рабочую область'"
+    ],
+    [
+      "title: 'Open workspaces'",
+      "title: 'Открыть рабочие области'"
+    ]
+  ],
+  "dist/main.js": [
+    [
+      "title: 'WSL distro not found'",
+      "title: 'Дистрибутив WSL не найден'"
+    ],
+    [
+      "message: `The WSL distro \"${WSL_DISTRO}\" is no longer installed.`",
+      "message: `Дистрибутив WSL «${WSL_DISTRO}» больше не установлен.`"
+    ],
+    [
+      "detail: 'Antigravity opened on Windows instead.'",
+      "detail: 'Antigravity запущен в Windows.'"
+    ],
+    [
+      "label: 'New Window'",
+      "label: 'Новое окно'"
+    ],
+    [
+      "label: 'No agents running'",
+      "label: 'Активных агентов нет'"
+    ],
+    [
+      "label: `Open ${electron_1.app.getName()}`",
+      "label: `Открыть ${electron_1.app.getName()}`"
+    ],
+    [
+      "label: 'Quit'",
+      "label: 'Выйти'"
+    ],
+    [
+      "buttons: ['Cancel', 'Quit']",
+      "buttons: ['Отмена', 'Выйти']"
+    ],
+    [
+      "title: 'Confirm Quit'",
+      "title: 'Подтверждение выхода'"
+    ],
+    [
+      "message: 'Are you sure you want to quit?'",
+      "message: 'Вы действительно хотите выйти?'"
+    ],
+    [
+      "detail: 'There may be agents or background tasks running.'",
+      "detail: 'Агенты или фоновые задачи могут ещё работать.'"
+    ]
+  ],
+  "dist/updater.js": [
+    [
+      "title: 'Check for Updates'",
+      "title: 'Проверка обновлений'"
+    ],
+    [
+      "message: 'No updates available'",
+      "message: 'Обновлений нет'"
+    ]
+  ],
+  "dist/tray.js": [
+    [
+      "(count > 0 ? `${count}` : 'No') +\n                    ' agent' +\n                    (count === 1 ? '' : 's') +\n                    ' running'",
+      "(count > 0 ? `Активных агентов: ${count}` : 'Активных агентов нет')"
+    ]
+  ]
+}
