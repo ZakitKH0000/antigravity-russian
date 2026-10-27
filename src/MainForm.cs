@@ -9,27 +9,29 @@ namespace AntigravityRussian {
     public sealed class MainForm : Form {
         readonly Color bg=Color.FromArgb(17,21,26), card=Color.FromArgb(27,33,40), muted=Color.FromArgb(162,174,186), ink=Color.FromArgb(237,243,248), accent=Color.FromArgb(130,235,193);
         readonly PatchService service=new PatchService();
+        readonly DiagnosticReport diagnostics=new DiagnosticReport();
         TextBox path;
         Label status, details, version, guidance;
         RichTextBox log;
         Button browse, check, backup, apply, restore, launch, import;
+        Button find, updates, support, help;
         ProgressBar progress;
         bool busy;
         Installation current;
         public MainForm() {
-            Text="Antigravity Russian"; ClientSize=new Size(1020,760); MinimumSize=new Size(950,790);
+            Text="Antigravity Russian"; ClientSize=new Size(1020,810); MinimumSize=new Size(950,840);
             BackColor=bg; ForeColor=ink; Font=new Font("Segoe UI",10); AutoScaleMode=AutoScaleMode.Font;
             StartPosition=FormStartPosition.CenterScreen;
             try { Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-            var root=new TableLayoutPanel { Dock=DockStyle.Fill,Padding=new Padding(28,20,28,16),ColumnCount=1,RowCount=8,BackColor=bg };
-            foreach(int h in new[]{86,100,76,188,50,28}) root.RowStyles.Add(new RowStyle(SizeType.Absolute,h));
+            var root=new TableLayoutPanel { Dock=DockStyle.Fill,Padding=new Padding(28,20,28,16),ColumnCount=1,RowCount=9,BackColor=bg };
+            foreach(int h in new[]{86,100,76,188,50,28,48}) root.RowStyles.Add(new RowStyle(SizeType.Absolute,h));
             root.RowStyles.Add(new RowStyle(SizeType.Percent,100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute,34)); Controls.Add(root);
             var heading=new TableLayoutPanel { Dock=DockStyle.Fill,ColumnCount=2,RowCount=2,Margin=Padding.Empty };
             heading.RowStyles.Add(new RowStyle(SizeType.Absolute,48)); heading.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100)); heading.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,160));
             heading.Controls.Add(Label("Antigravity на русском",25,ink),0,0);
-            heading.Controls.Add(Label("Резервная копия, перевод и откат — в одном приложении",10,muted),0,1);
-            var badge=Label("RU  /  версия 1.0.1",11,accent); badge.TextAlign=ContentAlignment.MiddleRight; heading.Controls.Add(badge,1,0); root.Controls.Add(heading,0,0);
+            heading.Controls.Add(Label("Перевод интерфейса на русский · резервная копия и откат",10,muted),0,1);
+            var badge=Label("RU  /  "+AppInfo.VersionText,11,accent); badge.TextAlign=ContentAlignment.MiddleRight; heading.Controls.Add(badge,1,0); root.Controls.Add(heading,0,0);
             var location=new TableLayoutPanel { Dock=DockStyle.Fill,Padding=new Padding(16,8,16,8),BackColor=card,ColumnCount=2,RowCount=3,Margin=new Padding(0,0,0,8) };
             location.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100)); location.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,160));
             location.RowStyles.Add(new RowStyle(SizeType.Absolute,24)); location.RowStyles.Add(new RowStyle(SizeType.Absolute,34)); location.RowStyles.Add(new RowStyle(SizeType.Percent,100));
@@ -46,9 +48,9 @@ namespace AntigravityRussian {
             steps.Controls.Add(Step("01", "Сохранить оригинал", "Проверенная копия текущей сборки останется на этом компьютере.",backup),0,0);
             steps.Controls.Add(Step("02", "Включить русский", "Переведите интерфейс. Чаты, проекты и настройки сохранятся.",apply),1,0);
             steps.Controls.Add(Step("03", "Откатить изменения", "Верните английский интерфейс без установки старой версии.",restore),2,0);
-            backup.Click+=async (s,e)=>await Run("Создаём резервную копию…",directory=>service.Backup(directory,Append));
-            apply.Click+=async (s,e)=>await Run("Устанавливаем русский интерфейс…",directory=>service.Apply(directory,Append));
-            restore.Click+=async (s,e)=>await Run("Восстанавливаем оригинал…",directory=>service.Restore(directory,Append)); root.Controls.Add(steps,0,3);
+            backup.Click+=async (s,e)=>await Run("Создаём резервную копию…",directory=>service.Backup(directory,Append),"backup");
+            apply.Click+=async (s,e)=>await Run("Устанавливаем русский интерфейс…",directory=>service.Apply(directory,Append),"apply");
+            restore.Click+=async (s,e)=>await Run("Восстанавливаем оригинал…",directory=>service.Restore(directory,Append),"restore"); root.Controls.Add(steps,0,3);
             var tools=new FlowLayoutPanel { Dock=DockStyle.Fill,WrapContents=false,Margin=new Padding(0,7,0,0) };
             check=Button("Проверить",false); check.Width=150; check.Click+=async(s,e)=>await RefreshInstallation();
             launch=Button("Открыть Antigravity",false); launch.Width=180; launch.Click+=(s,e)=> { try { service.Launch(path.Text); } catch(Exception x) { ShowError(x); } };
@@ -57,17 +59,23 @@ namespace AntigravityRussian {
             foreach(var tool in new[]{check,launch,folder,import}) tool.Dock=DockStyle.None;
             tools.Controls.AddRange(new Control[]{check,launch,folder,import}); root.Controls.Add(tools,0,4);
             guidance=Label("Перед русификацией или откатом полностью закройте Antigravity, включая значок в трее.",9,muted); root.Controls.Add(guidance,0,5);
+            var extras=new FlowLayoutPanel {Dock=DockStyle.Fill,WrapContents=false,Margin=new Padding(0,5,0,0)};
+            find=Button("Найти автоматически",false); find.Width=200; find.Click+=async(s,e)=>await Discover();
+            updates=Button("Обновления",false); updates.Width=150; updates.Click+=async(s,e)=>await CheckUpdates();
+            support=Button("Отчёт разработчику",false); support.Width=210; support.Click+=(s,e)=> {using(var form=new SupportForm(diagnostics.Build(current)))form.ShowDialog(this);};
+            help=Button("Инструкция",false); help.Width=145; help.Click+=(s,e)=> {try{Process.Start(new ProcessStartInfo(AppInfo.Repository+"#readme"){UseShellExecute=true});}catch(Exception ex){ShowError(ex);}};
+            foreach(var extra in new[]{find,updates,support,help})extra.Dock=DockStyle.None; extras.Controls.AddRange(new Control[]{find,updates,support,help}); root.Controls.Add(extras,0,6);
             var activity=new TableLayoutPanel { Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,Margin=new Padding(0,8,0,0) };
             activity.RowStyles.Add(new RowStyle(SizeType.Absolute,24)); activity.RowStyles.Add(new RowStyle(SizeType.Percent,100)); activity.RowStyles.Add(new RowStyle(SizeType.Absolute,5));
             activity.Controls.Add(Label("ЖУРНАЛ ДЕЙСТВИЙ",9,muted),0,0);
             log=new RichTextBox { Dock=DockStyle.Fill,ReadOnly=true,BackColor=Color.FromArgb(12,16,20),ForeColor=muted,BorderStyle=BorderStyle.None,Font=new Font("Segoe UI",9),DetectUrls=false,AccessibleName="Журнал действий" };
-            activity.Controls.Add(log,0,1); progress=new ProgressBar { Dock=DockStyle.Fill,Style=ProgressBarStyle.Marquee,Visible=false }; activity.Controls.Add(progress,0,2); root.Controls.Add(activity,0,6);
+            activity.Controls.Add(log,0,1); progress=new ProgressBar { Dock=DockStyle.Fill,Style=ProgressBarStyle.Marquee,Visible=false }; activity.Controls.Add(progress,0,2); root.Controls.Add(activity,0,7);
             var footer=new TableLayoutPanel { Dock=DockStyle.Fill,ColumnCount=2,Margin=Padding.Empty };
-            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100)); footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,140));
-            footer.Controls.Add(Label("Неофициальный проект  ·  2 653 перевода  ·  Локальная работа без сети",9,muted),0,0);
-            var github=new LinkLabel { Text="Проект на GitHub",Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleRight,LinkColor=accent,ActiveLinkColor=ink,VisitedLinkColor=accent };
-            github.LinkClicked+=(s,e)=>Process.Start(new ProcessStartInfo("https://github.com/ZakitKH0000/antigravity-russian") { UseShellExecute=true }); footer.Controls.Add(github,1,0); root.Controls.Add(footer,0,7);
-            Shown+=async(s,e)=> { path.Text=PatchService.FindInstallation()??""; await RefreshInstallation(); };
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100)); footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,170));
+            footer.Controls.Add(Label("Только перевод интерфейса  ·  Поддержка в Telegram: @zak0407",9,muted),0,0);
+            var github=new LinkLabel { Text="Проект на GitHub",Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleRight,UseCompatibleTextRendering=true,LinkColor=accent,ActiveLinkColor=ink,VisitedLinkColor=accent };
+            github.LinkClicked+=(s,e)=>Process.Start(new ProcessStartInfo(AppInfo.Repository) { UseShellExecute=true }); footer.Controls.Add(github,1,0); root.Controls.Add(footer,0,8);
+            Shown+=async(s,e)=>await Discover();
             FormClosing+=(s,e)=> { if(busy) { e.Cancel=true; Append("Дождитесь завершения операции перед закрытием окна."); } };
         }
         Label Label(string text,float size,Color color) { return new Label { Text=text,Font=new Font("Segoe UI",size),ForeColor=color,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,UseCompatibleTextRendering=true,AutoEllipsis=false,Margin=Padding.Empty }; }
@@ -87,11 +95,11 @@ namespace AntigravityRussian {
         }
         async void Import(object sender,EventArgs e) {
             using(var dialog=new OpenFileDialog { Filter="Резервная копия ASAR|*.asar",Title="Выберите оригинальный app.asar прежнего русификатора",CheckFileExists=true }) {
-                if(dialog.ShowDialog(this)!=DialogResult.OK) return; var file=dialog.FileName; await Run("Проверяем старую резервную копию…",directory=>service.ImportBackup(directory,file,Append));
+                if(dialog.ShowDialog(this)!=DialogResult.OK) return; var file=dialog.FileName; await Run("Проверяем старую резервную копию…",directory=>service.ImportBackup(directory,file,Append),"import");
             }
         }
         async Task RefreshInstallation() { await Run("Проверяем установку…",directory=>service.Inspect(directory)); }
-        async Task Run(string title,Func<string,Installation> action) {
+        async Task Run(string title,Func<string,Installation> action,string operation="inspect") {
             if(busy)return; busy=true; SetButtons(); status.Text=title; progress.Visible=true;
             string selectedDirectory=path.Text;
             try {
@@ -101,10 +109,12 @@ namespace AntigravityRussian {
                 version.Text="Версия "+current.Version+"   ·   Antigravity App";
                 details.Text=current.UnknownTranslation?"Импортируйте оригинальную копию прежнего русификатора или восстановите его оригинал.":current.IsRussian?"Оригинал этой сборки сохранён. При необходимости доступен откат.":current.HasBackup?"Следующий шаг — включить русский интерфейс.":"Начните с сохранения оригинала. Проверка и копирование не меняют приложение.";
                 Append(current.Status);
+                diagnostics.Record(operation,null);
             } catch(Exception ex) {
                 current=null;
                 try { current=service.Inspect(selectedDirectory); } catch { }
                 ShowError(ex);
+                diagnostics.Record(operation,ex);
             }
             finally { busy=false; progress.Visible=false; SetButtons(); }
         }
@@ -115,8 +125,31 @@ namespace AntigravityRussian {
             apply.BackColor=apply.Enabled?accent:Color.FromArgb(39,49,59);
             restore.Enabled=!busy&&current!=null&&current.IsRussian;
             import.Enabled=!busy&&current!=null&&current.UnknownTranslation;
+            find.Enabled=updates.Enabled=support.Enabled=help.Enabled=!busy;
+        }
+        async Task Discover() {
+            if(busy)return; busy=true; SetButtons(); progress.Visible=true; status.Text="Ищем установленный Antigravity…";
+            string found=null;
+            try {found=await Task.Run(()=>PatchService.FindInstallation());diagnostics.Record("discover",null);}
+            catch(Exception ex){diagnostics.Record("discover",ex);ShowError(ex);}
+            finally{busy=false;progress.Visible=false;SetButtons();}
+            if(found==null) {current=null;path.Text="";status.Text="Antigravity не найден автоматически";details.Text="Нажмите «Выбрать файл…» и укажите установленный Antigravity.exe.";SetButtons();Append(status.Text);return;}
+            path.Text=found;await RefreshInstallation();
+        }
+        async Task CheckUpdates() {
+            if(busy)return;busy=true;SetButtons();progress.Visible=true;
+            try {
+                Append("Проверяем обновления русификатора на GitHub…");
+                var release=await Task.Run(()=>UpdateService.FetchLatest());
+                if(!UpdateService.IsNewer(release.Version,AppInfo.Version)){Append("Установлена актуальная версия русификатора "+AppInfo.VersionText+".");diagnostics.Record("update",null);return;}
+                if(MessageBox.Show(this,"Доступен русификатор "+release.Version+". Скачать, проверить и перезапустить приложение?\nРезервные копии и Antigravity не изменяются.","Обновление русификатора",MessageBoxButtons.YesNo,MessageBoxIcon.Information)!=DialogResult.Yes)return;
+                string plan=await Task.Run(()=>UpdateService.Stage(release,Append));
+                UpdateService.StartInstaller(plan);diagnostics.Record("update",null);busy=false;Close();
+            }catch(Exception ex){diagnostics.Record("update",ex);Append("Обновление не выполнено: "+ex.Message);MessageBox.Show(this,"Не удалось обновиться: "+ex.Message+"\nМожно скачать ZIP вручную из Releases.","Обновление русификатора",MessageBoxButtons.OK,MessageBoxIcon.Information);}
+            finally{if(!IsDisposed){busy=false;progress.Visible=false;SetButtons();}}
         }
         void ShowError(Exception error) {
+            diagnostics.Record("operation",error);
             string message=error is UnauthorizedAccessException?"Нет доступа к папке Antigravity. Для установки в Program Files запустите русификатор от имени администратора.":error.Message;
             status.Text="Действие не выполнено"; status.ForeColor=Color.FromArgb(255,175,143); details.Text=message; Append("Ошибка: "+message);
         }

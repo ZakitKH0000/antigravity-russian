@@ -38,13 +38,7 @@ namespace AntigravityRussian {
             }
         }
         public static string FindInstallation() {
-            var saved=Path.Combine(DefaultDataRoot,"installation.txt");
-            var candidates=new List<string>();
-            if(File.Exists(saved)) { try { candidates.Add(File.ReadAllText(saved).Trim()); } catch(IOException) { } }
-            foreach(var basePath in new[]{Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)}) {
-                candidates.Add(Path.Combine(basePath,"Programs","antigravity")); candidates.Add(Path.Combine(basePath,"antigravity"));
-            }
-            return candidates.FirstOrDefault(p=>!string.IsNullOrWhiteSpace(p) && File.Exists(Path.Combine(p,"Antigravity.exe")) && File.Exists(Path.Combine(p,"resources","app.asar")));
+            return InstallationLocator.Find();
         }
         public void SaveSelection(string directory) {
             System.IO.Directory.CreateDirectory(DataRoot);

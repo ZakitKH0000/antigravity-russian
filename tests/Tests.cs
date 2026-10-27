@@ -91,6 +91,7 @@ static class Tests {
                 while(!holds) System.Threading.Thread.Sleep(10);
                 Fails(()=>service.Restore(install,Log),"Concurrent patch operation is refused"); thread.Join();
             }
+            FeatureTests.Run(root,Assert,Fails,install);
             Console.WriteLine("ALL "+count+" ASSERTIONS PASSED"); return 0;
         } catch(Exception ex) { Console.Error.WriteLine(ex); Console.Error.WriteLine("Fixture directory retained: "+root); return 1; }
     }
