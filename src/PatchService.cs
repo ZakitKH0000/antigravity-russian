@@ -26,6 +26,8 @@ namespace AntigravityRussian {
         // AppFolder: Electron loads resources/app before app.asar, so a translated archive is never shown.
         // UpdatePending: Antigravity downloaded an update that replaces app.asar with English when it quits.
         public bool AppFolder, UpdatePending;
+        // Set by Russify/RestoreOriginal: Antigravity was open and was closed by the localizer.
+        public bool WasRunning;
         public string UpdaterCache;
         public int Records;
         public BackupRecord Record;
@@ -159,6 +161,101 @@ namespace AntigravityRussian {
             RestoreCore(directory,log);
             return ApplyCore(directory,log);
         }); }
+        // One click, as the owner asked: close Antigravity, install an update it has already downloaded, replace another
+        // translation with its verified original (or a fresh official install), then translate the current build.
+        public Installation Russify(string directory,Action<string> log) { return Locked(()=> {
+            var info=Inspect(directory);
+            if(info.AppFolder) throw new InvalidOperationException(AppFolderHint+" Файлы не изменены.");
+            if(info.IsRussian && !info.TranslationOutdated && !info.UpdatePending) { log("Русский интерфейс уже установлен."); return info; }
+            bool wasRunning=Prepare(info,log);
+            info=Inspect(directory);
+            if(info.UnknownTranslation) ReplaceUnknown(info,log);
+            if(Inspect(directory).TranslationOutdated) RestoreCore(directory,log);
+            var result=ApplyCore(directory,log); result.WasRunning=wasRunning; return result;
+        }); }
+        public Installation RestoreOriginal(string directory,Action<string> log) { return Locked(()=> {
+            var info=Inspect(directory);
+            bool wasRunning=info.IsRussian && AntigravityProcesses.Close(directory,log);
+            if(wasRunning) WaitForUpdater(info,log);
+            var result=RestoreCore(directory,log); result.WasRunning=wasRunning; return result;
+        }); }
+        bool Prepare(Installation info,Action<string> log) {
+            bool wasRunning=AntigravityProcesses.Close(info.Directory,log);
+            WaitForUpdater(info,log);
+            string pending=AntigravityUpdater.PendingInstaller(info.UpdaterCache,info.ExePath);
+            if(pending!=null) { log("Antigravity уже скачал обновление — ставим его до перевода, иначе оно вернёт английский."); AntigravityUpdater.Install(pending,info.UpdaterCache,log); }
+            return wasRunning;
+        }
+        // Quitting Antigravity may start the installer of a downloaded update a moment later.
+        static void WaitForUpdater(Installation info,Action<string> log) {
+            Thread.Sleep(1500);
+            if(AntigravityUpdater.Running(info.UpdaterCache)==0) return;
+            log("Устанавливается обновление Antigravity, ждём окончания…");
+            var until=DateTime.UtcNow.AddMinutes(10);
+            while(AntigravityUpdater.Running(info.UpdaterCache)>0) {
+                if(DateTime.UtcNow>until) throw new TimeoutException("Обновление Antigravity устанавливается дольше 10 минут. Дождитесь окончания и повторите.");
+                Thread.Sleep(1000);
+            }
+        }
+        void ReplaceUnknown(Installation info,Action<string> log) {
+            string found=FindOriginal(info,log);
+            if(found!=null) {
+                log("Найден оригинал этой сборки — прежний перевод будет заменён.");
+                Replace(info,found,AgRuArchive.FileHash(found),AgRuArchive.FileHash(info.ExePath));
+                return;
+            }
+            log("Оригинал прежнего перевода не найден. Переустанавливаем Antigravity официальным установщиком — чаты, проекты и настройки сохраняются.");
+            var release=AntigravityUpdater.Latest(info.Directory);
+            string installer=AntigravityUpdater.Fetch(release,Path.Combine(DataRoot,"installer"),log);
+            AntigravityUpdater.Install(installer,info.UpdaterCache,log);
+            try { File.Delete(installer); } catch(IOException) { } catch(UnauthorizedAccessException) { }
+            if(Inspect(info.Directory).UnknownTranslation) throw new InvalidOperationException("После переустановки в этой папке остался прежний перевод. Возможно, Antigravity установлен в другое место — выберите его через «Изменить…».");
+        }
+        // The original of another translation: other archives beside app.asar (for example app.asar.bak from the regional
+        // unlocker), records of this localizer, and copies kept by the earlier v3 script. Each must be the exact build.
+        string FindOriginal(Installation info,Action<string> log) {
+            log("Ищем оригинал установленного перевода…");
+            var installed=new AgRuArchive(info.ArchivePath);
+            foreach(string path in OriginalCandidates(info).Distinct(StringComparer.OrdinalIgnoreCase)) {
+                try {
+                    long size=new FileInfo(path).Length;
+                    if(size<64 || size>200000000) continue;
+                    var candidate=new AgRuArchive(path);
+                    if(candidate.Name!="antigravity" || candidate.HasTranslation || !installed.DerivedFrom(candidate)) continue;
+                    candidate.CheckCompatible();
+                    return path;
+                } catch(Exception) { }
+            }
+            return null;
+        }
+        // Lazy: the folder search runs only when nearer candidates did not match.
+        IEnumerable<string> OriginalCandidates(Installation info) {
+            string resources=Path.GetDirectoryName(info.ArchivePath);
+            foreach(string f in Files(resources,"*.asar*")) if(!f.Equals(info.ArchivePath,StringComparison.OrdinalIgnoreCase) && !f.Contains(".ru-")) yield return f;
+            foreach(string install in Folders(Path.Combine(DataRoot,"backups"))) foreach(string record in Folders(install)) if(File.Exists(Path.Combine(record,"original.asar"))) yield return Path.Combine(record,"original.asar");
+            string profile=Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            foreach(string root in new[]{Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),Path.Combine(profile,"Downloads")})
+                foreach(string f in Search(root,"original.asar",8,20000)) yield return f;
+        }
+        static string[] Files(string folder,string pattern) { try { return System.IO.Directory.GetFiles(folder,pattern); } catch(IOException) { } catch(UnauthorizedAccessException) { } return new string[0]; }
+        static string[] Folders(string folder) { try { return System.IO.Directory.Exists(folder)?System.IO.Directory.GetDirectories(folder):new string[0]; } catch(IOException) { } catch(UnauthorizedAccessException) { } return new string[0]; }
+        // Bounded breadth-first search that skips hidden folders, links and package caches.
+        static List<string> Search(string root,string name,int depth,int budget) {
+            var found=new List<string>(); var queue=new Queue<KeyValuePair<string,int>>();
+            if(System.IO.Directory.Exists(root)) queue.Enqueue(new KeyValuePair<string,int>(root,0));
+            while(queue.Count>0 && budget-->0) {
+                var item=queue.Dequeue();
+                found.AddRange(Files(item.Key,name));
+                if(item.Value>=depth) continue;
+                foreach(string sub in Folders(item.Key)) {
+                    string leaf=Path.GetFileName(sub);
+                    if(leaf.StartsWith(".") || leaf=="node_modules" || leaf=="AppData") continue;
+                    try { if((File.GetAttributes(sub)&(FileAttributes.ReparsePoint|FileAttributes.Hidden|FileAttributes.System))!=0) continue; } catch(IOException) { continue; } catch(UnauthorizedAccessException) { continue; }
+                    queue.Enqueue(new KeyValuePair<string,int>(sub,item.Value+1));
+                }
+            }
+            return found;
+        }
         Installation ApplyCore(string directory,Action<string> log) {
             var info=Inspect(directory);
             if(info.IsRussian) { log("Русский интерфейс уже установлен."); return info; }

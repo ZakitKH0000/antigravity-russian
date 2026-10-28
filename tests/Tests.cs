@@ -56,6 +56,12 @@ static class Tests {
             Assert(service.UpdateProcesses(install)==1,"Running update installer is detected");
             Fails(()=>service.Apply(install,Log),"Translation waits while an Antigravity update is being installed"); Assert(Hash(target)==original,"Installation is not modified during an update");
         } finally { if(!running.HasExited) running.Kill(); running.WaitForExit(); running.Dispose(); }
+        // Processes started from the installation (windows, tray, language server) are closed by the localizer.
+        string helper=Path.Combine(install,"resources","helper.exe"); File.Copy(Path.Combine(Environment.SystemDirectory,"PING.EXE"),helper);
+        var tray=System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(helper,"-n 60 127.0.0.1") { UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true });
+        try { Assert(AntigravityProcesses.Close(install,Log)&&tray.WaitForExit(5000),"Antigravity processes of the installation are closed automatically"); }
+        finally { if(!tray.HasExited) tray.Kill(); tray.Dispose(); File.Delete(helper); }
+        Assert(!AntigravityProcesses.Close(install,Log),"Closing reports when nothing was running");
         string config=Path.Combine(install,"resources","app-update.yml"); File.WriteAllText(config,"provider: generic\nupdaterCacheDirName: 'other-updater'\n");
         Assert(AntigravityUpdater.Cache(install,local)==Path.Combine(local,"other-updater"),"Updater cache name is read from app-update.yml");
         File.Delete(config); File.Delete(installer);
@@ -122,6 +128,14 @@ static class Tests {
             a.Build(preexisting,"// fixture overlay", "{}", "{}"); File.Copy(preexisting,target,true); string unknown=Hash(target);
             Assert(service.Inspect(install).UnknownTranslation,"Unrecorded translation detected");
             Fails(()=>service.Backup(install,Log),"Unknown translation cannot be backed up as pristine original"); Assert(Hash(target)==unknown,"Unknown translation is not overwritten");
+            // One click replaces another translation, but only with the exact build it was made from.
+            string otherBuild=Path.Combine(root,"other-build.asar"); Fixture(otherBuild,"4.0-test",true,false);
+            Assert(!new AgRuArchive(target).DerivedFrom(new AgRuArchive(otherBuild)),"Another build with the same version is not accepted as the original");
+            string bak=Path.Combine(resources,"app.asar.bak"); Fixture(bak,"4.0-test",false,false);
+            Assert(Hash(bak)==lockedHash&&new AgRuArchive(target).DerivedFrom(new AgRuArchive(bak)),"Translated archive is matched to its exact original");
+            var replaced=service.Russify(install,Log);
+            Assert(replaced.IsRussian&&!replaced.WasRunning&&Hash(Path.Combine(replaced.BackupDirectory,"original.asar"))==lockedHash,"Russify replaces another translation using the original found beside app.asar");
+            Assert(!Signature.SignedByGoogle(exe),"Unsigned installer is never trusted");
             // Independent instances must serialize mutation operations.
             using(var mutex=new System.Threading.Mutex(false,"Local\\AntigravityRuRecovery")) {
                 bool holds=false;

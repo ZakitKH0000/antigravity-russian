@@ -1,4 +1,4 @@
-﻿param([string]$Version='1.2.1')
+﻿param([string]$Version='1.3.0')
 $ErrorActionPreference='Stop'
 if($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid package version.' }
 & (Join-Path $PSScriptRoot 'Build.ps1') -Test

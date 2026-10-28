@@ -17,17 +17,14 @@ namespace AntigravityRussian {
         TextBox path;
         Label status, details, version, bannerText;
         RichTextBox log;
-        Button primary, restore, launch, cancelWait, updates, support, more, bannerButton;
+        Button primary, restore, launch, updates, support, more, bannerButton;
         CheckBox agentRussian, checkUpdates, desktopShortcut;
         Panel banner;
         ContextMenuStrip menu;
         ToolStripMenuItem importItem;
         ProgressBar progress;
-        Timer waitTimer;
-        Func<string,Installation> waitingAction; string waitingTitle, waitingOperation;
         ReleaseInfo pendingRelease;
-        bool busy, waiting, loadingOptions, waitedForUpdate;
-        int updateGrace;
+        bool busy, loadingOptions;
         Installation current;
 
 
@@ -67,12 +64,11 @@ namespace AntigravityRussian {
             status=Label("Проверяем установку…",16,accent); details=Label("",10,muted); details.TextAlign=ContentAlignment.TopLeft; details.AutoEllipsis=false;
             state.Controls.Add(status,0,0); state.Controls.Add(details,0,1);
             var actions=new FlowLayoutPanel { Dock=DockStyle.Fill,WrapContents=false,Margin=Padding.Empty };
-            primary=Button("Русифицировать",true); primary.Width=250; primary.Click+=async(s,e)=>await Primary();
-            restore=Button("Вернуть английский",false); restore.Width=190; restore.Click+=async(s,e)=>await Guarded("Возвращаем английский интерфейс…",d=>service.Restore(d,Append),"restore");
+            primary=Button("Русифицировать",true); primary.Width=300; primary.Click+=async(s,e)=>await Primary();
+            restore=Button("Вернуть английский",false); restore.Width=190; restore.Click+=async(s,e)=>await Run("Возвращаем английский интерфейс…",d=>service.RestoreOriginal(d,Append),"restore");
             launch=Button("Открыть Antigravity",false); launch.Width=190; launch.Click+=(s,e)=>Launch();
-            cancelWait=Button("Отмена",false); cancelWait.Width=120; cancelWait.Visible=false; cancelWait.Click+=(s,e)=>StopWaiting("Ожидание отменено.");
-            foreach(var b in new[]{primary,restore,launch,cancelWait}) { b.Dock=DockStyle.None; b.Margin=new Padding(0,0,10,0); }
-            actions.Controls.AddRange(new Control[]{primary,restore,launch,cancelWait}); state.Controls.Add(actions,0,2); root.Controls.Add(state,0,3);
+            foreach(var b in new[]{primary,restore,launch}) { b.Dock=DockStyle.None; b.Margin=new Padding(0,0,10,0); }
+            actions.Controls.AddRange(new Control[]{primary,restore,launch}); state.Controls.Add(actions,0,2); root.Controls.Add(state,0,3);
 
             var options=Card(4,1); options.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             options.RowStyles.Add(new RowStyle(SizeType.Absolute,20)); for(int i=0;i<3;i++) options.RowStyles.Add(new RowStyle(SizeType.Absolute,30));
@@ -102,12 +98,10 @@ namespace AntigravityRussian {
             var github=new LinkLabel { Text="Проект на GitHub",Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleRight,UseCompatibleTextRendering=true,LinkColor=accent,ActiveLinkColor=ink,VisitedLinkColor=accent };
             github.LinkClicked+=(s,e)=>Open(AppInfo.Repository); footer.Controls.Add(github,1,0); root.Controls.Add(footer,0,7);
 
-            waitTimer=new Timer { Interval=1000 }; waitTimer.Tick+=async(s,e)=>await WaitTick();
             LoadOptions(); SetButtons();
             Shown+=async(s,e)=> { await Discover(); await UnlockerCheck(); await StartupUpdateCheck(); };
             Activated+=async(s,e)=>await Recheck();
-            FormClosing+=(s,e)=> { if(busy && !waiting) { e.Cancel=true; Append("Дождитесь завершения операции перед закрытием окна."); } };
-            FormClosed+=(s,e)=>waitTimer.Stop();
+            FormClosing+=(s,e)=> { if(busy) { e.Cancel=true; Append("Дождитесь завершения операции перед закрытием окна."); } };
         }
 
         // Dark title bar on Windows 10 2004+ and Windows 11, matching the window.
@@ -200,11 +194,9 @@ namespace AntigravityRussian {
         }
         async Task Primary() {
             if(current==null) { Browse(this,EventArgs.Empty); return; }
-            if(current.UnknownTranslation) { Import(this,EventArgs.Empty); return; }
             if(current.AppFolder) { Open(Path.Combine(current.Directory,"resources")); return; }
-            if(current.TranslationOutdated) { await Guarded("Обновляем перевод…",d=>service.UpdateTranslation(d,Append),"apply"); return; }
-            if(current.IsRussian) { Launch(); return; }
-            await Guarded("Включаем русский интерфейс…",d=>service.Apply(d,Append),"apply");
+            if(current.IsRussian && !current.TranslationOutdated && !current.UpdatePending) { Launch(); return; }
+            await Run(current.TranslationOutdated?"Обновляем перевод…":"Включаем русский интерфейс…",d=>service.Russify(d,Append),"apply");
         }
         void Launch() {
             try { service.Launch(path.Text); diagnostics.Record("launch",null); Append("Antigravity открывается."); }
@@ -226,47 +218,6 @@ namespace AntigravityRussian {
             using(var form=new SupportForm(diagnostics.Build(current))) form.ShowDialog(this);
         }
 
-        // Writing needs Antigravity closed: wait for it instead of failing, never close it ourselves.
-        async Task Guarded(string title,Func<string,Installation> action,string operation) {
-            if(busy || current==null) return;
-            string directory=path.Text;
-            int[] running=await Task.Run(()=>Running(directory));
-            if(running[0]+running[1]==0) { await Run(title,action,operation); return; }
-            waiting=true; busy=true; waitingAction=action; waitingTitle=title; waitingOperation=operation; waitedForUpdate=running[1]>0;
-            ShowWaiting(running); SetButtons(); waitTimer.Start();
-            Append(running[0]>0?"Antigravity ещё работает. Операция начнётся сама, как только приложение будет закрыто.":"Устанавливается обновление Antigravity. Операция начнётся сама после установки.");
-            if(running[0]>0 && current.UpdatePending) Append("Antigravity скачал обновление: оно установится при закрытии. Русификатор дождётся установки и переведёт новую версию.");
-        }
-        // Antigravity processes of this installation and installers of its update.
-        int[] Running(string directory) { return new[]{PatchService.RunningProcesses(directory),service.UpdateProcesses(directory)}; }
-        void ShowWaiting(int[] running) {
-            if(running[0]==0) {
-                status.Text="Устанавливается обновление Antigravity"; status.ForeColor=warn;
-                details.Text="Antigravity ставит скачанное обновление. Оно заменяет файлы интерфейса английскими, поэтому русификатор ждёт окончания установки и продолжит автоматически.";
-                return;
-            }
-            status.Text="Закройте Antigravity"; status.ForeColor=warn;
-            details.Text="Приложение ещё работает (процессов: "+running[0]+"). Закройте окно и значок в трее: правой кнопкой → «Выйти». Если процессы остаются — Диспетчер задач → Antigravity → «Снять задачу». Продолжим автоматически.";
-        }
-        async Task WaitTick() {
-            if(!waiting) return;
-            waitTimer.Stop();
-            string directory=path.Text;
-            int[] running=await Task.Run(()=>Running(directory));
-            if(!waiting) return;
-            if(running[1]>0) waitedForUpdate=true;
-            if(running[0]+running[1]>0) { ShowWaiting(running); waitTimer.Start(); return; }
-            // The updater starts its installer while Antigravity quits; give it a moment to appear.
-            if(!waitedForUpdate && current!=null && current.UpdatePending && ++updateGrace<4) { waitTimer.Start(); return; }
-            var action=waitingAction; string title=waitingTitle, operation=waitingOperation;
-            waiting=false; busy=false; updateGrace=0; SetButtons(); Append(waitedForUpdate?"Обновление Antigravity установлено.":"Antigravity закрыт.");
-            await Run(title,action,operation);
-        }
-        void StopWaiting(string message) {
-            waitTimer.Stop(); waiting=false; busy=false; updateGrace=0; Append(message);
-            if(current!=null) ShowState(); SetButtons();
-        }
-
         async Task Run(string title,Func<string,Installation> action,string operation="inspect") {
             if(busy) return; busy=true; SetButtons(); status.Text=title; status.ForeColor=accent; progress.Visible=true;
             string selectedDirectory=path.Text;
@@ -277,6 +228,8 @@ namespace AntigravityRussian {
                 if(operation=="restore" && !current.IsRussian) { try { if(rule.IsInstalled) { rule.Remove(); Append("Правило языка агента удалено."); } } catch(Exception x) { Append("Правило языка агента не удалено: "+x.Message); } }
                 ShowState(); Append(current.Status);
                 diagnostics.Record(operation,null);
+                // Antigravity was closed for the change: open it again, as it was before.
+                if(current.WasRunning) Launch();
             } catch(Exception ex) {
                 current=null;
                 try { current=service.Inspect(selectedDirectory); } catch { }
@@ -296,23 +249,21 @@ namespace AntigravityRussian {
             if(current.UnknownTranslation) Append("Отпечаток установленного архива: "+current.Hash.Substring(0,12)+"…, записей копий для этой установки: "+current.Records+".");
             status.Text=current.Status; status.ForeColor=current.UnknownTranslation||current.AppFolder?warn:accent;
             version.Text="Antigravity App, версия "+current.Version;
-            details.Text=current.UnknownTranslation?"Antigravity уже изменён другим русификатором. Если это прежний скрипт v3 — импортируйте его оригинальную копию; иначе сначала верните оригинал тем инструментом."
+            details.Text=current.UnknownTranslation?"Antigravity изменён другим или прежним русификатором. Нажмите «Русифицировать»: русификатор найдёт оригинал этой сборки, а если не найдёт — переустановит Antigravity официальным установщиком (чаты и настройки сохраняются), и поставит свой перевод."
                 :current.AppFolder?PatchService.AppFolderHint+" Закройте Antigravity и переименуйте папку app, например в app.off, — не удаляйте её. Если что-то перестанет работать, верните прежнее имя."
-                :current.UpdatePending&&!current.IsRussian?"Antigravity скачал обновление. Оно установится при закрытии Antigravity и вернёт английский, поэтому русификатор дождётся установки и переведёт уже новую версию."
-                :current.UpdatePending?"Antigravity скачал обновление и поставит его при закрытии — после этого интерфейс снова станет английским. Откройте русификатор после обновления и включите русский заново."
+                :current.UpdatePending&&!current.IsRussian?"Antigravity скачал обновление. При русификации оно установится первым, а перевод встанет уже на новую версию."
+                :current.UpdatePending?"Antigravity скачал обновление и поставит его при закрытии — после этого интерфейс снова станет английским. Нажмите «Обновить Antigravity и перевод», чтобы сделать всё сразу."
                 :current.TranslationOutdated?"Русификатор обновился, и в нём есть новые переводы. Нажмите «Обновить перевод» — оригинал будет восстановлен и переведён заново."
                 :current.IsRussian?"Оригинал этой сборки сохранён — вернуть английский можно в любой момент. Чаты, проекты и настройки не затрагиваются."
                 :current.EarlierBuild?"Antigravity установил обновление, и перевод нужно включить заново. Оригинал новой сборки сохранится автоматически."
-                :"Нажмите «Русифицировать»: оригинал сохранится автоматически, затем интерфейс станет русским. Antigravity должен быть закрыт.";
+                :"Нажмите «Русифицировать»: оригинал сохранится автоматически. Если Antigravity открыт, русификатор сам закроет его и откроет снова уже на русском.";
         }
         void SetButtons() {
             bool idle=!busy;
-            primary.Enabled=idle; primary.Text=current==null?"Выбрать Antigravity.exe…":current.UnknownTranslation?"Импортировать копию…":current.AppFolder?"Открыть папку resources":current.TranslationOutdated?"Обновить перевод":current.IsRussian?"Открыть Antigravity":"Русифицировать";
+            primary.Enabled=idle; primary.Text=current==null?"Выбрать Antigravity.exe…":current.AppFolder?"Открыть папку resources":current.UnknownTranslation?"Русифицировать":current.TranslationOutdated?"Обновить перевод":current.IsRussian&&current.UpdatePending?"Обновить Antigravity и перевод":current.IsRussian?"Открыть Antigravity":"Русифицировать";
             primary.BackColor=primary.Enabled?accent:quiet; primary.ForeColor=primary.Enabled?bg:muted;
             restore.Visible=current!=null&&current.IsRussian; restore.Enabled=idle;
             launch.Visible=current!=null&&!current.IsRussian; launch.Enabled=idle;
-            cancelWait.Visible=waiting;
-            if(waiting) { primary.Enabled=false; restore.Enabled=false; launch.Enabled=false; primary.BackColor=quiet; primary.ForeColor=muted; }
             updates.Enabled=support.Enabled=more.Enabled=bannerButton.Enabled=idle;
             if(importItem!=null) importItem.Enabled=current!=null&&current.UnknownTranslation;
         }

@@ -65,6 +65,21 @@ public sealed class AgRuArchive {
     }
     public string Text(string name) { if(!data.ContainsKey(name)) throw new Exception("Missing packed entry: "+name); return Utf.GetString(data[name]); }
     public bool Has(string name) { return data.ContainsKey(name); }
+    // Russian translations of this archive (ours and the earlier v3 script) touch only these scripts.
+    static readonly string[] TranslatedEntries={"dist/preload.js","dist/ipcHandlers.js","dist/main.js","dist/tray.js","dist/updater.js"};
+    // The archive is a small Electron shell, so the version alone does not pin a build. A translated archive must keep
+    // every other entry byte for byte and must start its preload with the complete original preload (the overlay is appended).
+    public bool DerivedFrom(AgRuArchive original) {
+        if(Version!=original.Version || !original.Has("dist/preload.js") || !Has("dist/preload.js") || data.Count<original.data.Count || data.Count>original.data.Count+5) return false;
+        foreach(var p in original.data) {
+            byte[] mine;
+            if(!data.TryGetValue(p.Key,out mine)) return false;
+            if(mine.Length==p.Value.Length && mine.SequenceEqual(p.Value)) continue;
+            if(!TranslatedEntries.Contains(p.Key)) return false;
+        }
+        byte[] before=original.data["dist/preload.js"], after=data["dist/preload.js"];
+        return after.Length>before.Length && after.Take(before.Length).SequenceEqual(before);
+    }
     public bool HasTranslation { get { return Has("dist/preload.js") && (Text("dist/preload.js").Contains("LOCAL RUSSIAN TRANSLATION") || Text("dist/preload.js").Contains("dataset.antigravityRu")); } }
     static int Count(string s,string match) { int n=0,p=0; while((p=s.IndexOf(match,p,StringComparison.Ordinal))>=0) { n++; p+=match.Length; } return n; }
     public void CheckCompatible() {
