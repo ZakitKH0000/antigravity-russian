@@ -23,13 +23,20 @@ namespace AntigravityRussian {
         public bool IsRussian, HasBackup, UnknownTranslation;
         // Installed translation was built by another release; EarlierBuild: another Antigravity build was translated here.
         public bool TranslationOutdated, EarlierBuild;
+        // AppFolder: Electron loads resources/app before app.asar, so a translated archive is never shown.
+        // UpdatePending: Antigravity downloaded an update that replaces app.asar with English when it quits.
+        public bool AppFolder, UpdatePending;
+        public string UpdaterCache;
         public int Records;
         public BackupRecord Record;
-        public string Status { get { return UnknownTranslation ? "Обнаружена другая русификация" : TranslationOutdated ? "Доступен новый перевод" : IsRussian ? "Русский интерфейс включён" : EarlierBuild ? "Antigravity обновился — включите русский снова" : "Английский интерфейс — можно русифицировать"; } }
+        public string Status { get { return UnknownTranslation ? "Обнаружена другая русификация" : AppFolder ? "Перевод не виден: мешает папка resources\\app" : TranslationOutdated ? "Доступен новый перевод" : IsRussian ? "Русский интерфейс включён" : EarlierBuild ? "Antigravity обновился — включите русский снова" : "Английский интерфейс — можно русифицировать"; } }
     }
     public sealed class PatchService {
         public static readonly string DefaultDataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AntigravityRussian");
         public readonly string DataRoot;
+        // Where Antigravity keeps downloaded updates; tests point it at a temporary folder.
+        public string LocalData=Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        public const string AppFolderHint="Antigravity загружает интерфейс из папки resources\\app, а не из app.asar, поэтому перевод не будет виден. Такую папку создают распаковщики, например анлокеры для старых версий Antigravity. Русификатор её не меняет.";
         static JavaScriptSerializer Json() { return new JavaScriptSerializer { MaxJsonLength=64000000 }; }
         public PatchService(string dataRoot) { DataRoot=Path.GetFullPath(dataRoot); }
         public PatchService() : this(DefaultDataRoot) { }
@@ -58,7 +65,9 @@ namespace AntigravityRussian {
             if(!File.Exists(archive) || !File.Exists(exe)) throw new InvalidOperationException("В выбранной папке нет Antigravity.exe и resources/app.asar.");
             var a=new AgRuArchive(archive);
             if(a.Name!="antigravity" || a.Product!="Antigravity") throw new InvalidOperationException("Эта установка не поддерживается. Нужен Antigravity App с Electron-архивом app.asar.");
-            var result=new Installation { Directory=directory, ArchivePath=archive, ExePath=exe, Version=a.Version, Hash=AgRuArchive.FileHash(archive) };
+            var result=new Installation { Directory=directory, ArchivePath=archive, ExePath=exe, Version=a.Version, Hash=AgRuArchive.FileHash(archive),
+                AppFolder=File.Exists(Path.Combine(directory,"resources","app","package.json")), UpdaterCache=AntigravityUpdater.Cache(directory,LocalData) };
+            result.UpdatePending=AntigravityUpdater.Pending(result.UpdaterCache,exe);
             string records=Records(directory);
             bool otherRecords=false;
             if(System.IO.Directory.Exists(records)) foreach(string recordRoot in System.IO.Directory.GetDirectories(records)) {
@@ -100,7 +109,10 @@ namespace AntigravityRussian {
             }
             return count;
         }
+        // Installer of an Antigravity update that is replacing the files right now.
+        public int UpdateProcesses(string directory) { return AntigravityUpdater.Running(AntigravityUpdater.Cache(Path.GetFullPath(directory),LocalData)); }
         static void EnsureClosed(Installation info) {
+            if(AntigravityUpdater.Running(info.UpdaterCache)>0) throw new InvalidOperationException("Сейчас устанавливается обновление Antigravity. Дождитесь окончания установки и повторите действие.");
             foreach(var process in Process.GetProcessesByName("Antigravity")) using(process) {
                 try {
                     if(string.Equals(process.MainModule.FileName,info.ExePath,StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Закройте Antigravity, включая значок в трее, и повторите действие. Принудительное завершение не выполняется.");
@@ -150,6 +162,7 @@ namespace AntigravityRussian {
         Installation ApplyCore(string directory,Action<string> log) {
             var info=Inspect(directory);
             if(info.IsRussian) { log("Русский интерфейс уже установлен."); return info; }
+            if(info.AppFolder) throw new InvalidOperationException(AppFolderHint+" Файлы не изменены.");
             EnsureClosed(info); AgRuArchive.CheckExecutable(info.ExePath);
             string exeHash=AgRuArchive.FileHash(info.ExePath);
             if(!info.HasBackup) info=BackupCore(directory,log);

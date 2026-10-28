@@ -76,6 +76,13 @@ static class FeatureTests {
             string problem=RegionalUnlocker.ProxyProblem();
             check(problem!=null&&problem.Contains(port.ToString()),"Stopped unlocker proxy is reported with its port");
         } finally { Environment.SetEnvironmentVariable("AG_LS_PROXY",savedProxy); }
+        string desktop=Path.Combine(root,"desktop"); Directory.CreateDirectory(desktop); var link=new DesktopShortcut(desktop,exe);
+        link.Install(); check(link.IsInstalled&&!link.Outdated&&Path.GetFileName(link.Path)=="Русификатор Antigravity.lnk","Desktop shortcut has a Russian name and opens the localizer");
+        var moved=new DesktopShortcut(desktop,Path.Combine(root,"moved","AntigravityRussian.exe"));
+        check(moved.Outdated,"Shortcut to a moved localizer is detected"); moved.Install(); check(moved.IsInstalled&&!moved.Outdated,"Shortcut follows the moved localizer");
+        moved.Remove(); check(!File.Exists(link.Path),"Desktop shortcut removed");
+        File.WriteAllText(link.Path,"user file"); fails(()=>link.Install(),"Foreign file with the shortcut name is never overwritten"); link.Remove();
+        check(File.ReadAllText(link.Path)=="user file","Foreign file with the shortcut name is never deleted");
         using(var config=typeof(PatchService).Assembly.GetManifestResourceStream("app.config"))
             check(config!=null&&new StreamReader(config).ReadToEnd().Contains("PerMonitorV2"),"Runtime settings are embedded for the standalone EXE");
     }

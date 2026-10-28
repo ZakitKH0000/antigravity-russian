@@ -42,13 +42,31 @@ static class Tests {
     }
     static void Fuse(string path,bool locked) { File.WriteAllBytes(path,Bytes("fixture-dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX"+"\x01\x09"+(locked?"101110011":"101100011")+new string('\0',32))); }
     static string Hash(string path) { return AgRuArchive.FileHash(path); }
+    // A downloaded Antigravity update installs when the app quits and puts the English archive back.
+    static void Updates(PatchService service,string install,string root,string target,string original) {
+        string local=Path.Combine(root,"local"), pending=Path.Combine(local,"antigravity-updater","pending"), installer=Path.Combine(pending,"Antigravity-Setup.exe");
+        Directory.CreateDirectory(pending); File.Copy(Path.Combine(Environment.SystemDirectory,"PING.EXE"),installer);
+        File.SetLastWriteTimeUtc(installer,DateTime.UtcNow.AddMinutes(5));
+        Assert(service.Inspect(install).UpdatePending,"Downloaded Antigravity update is detected");
+        File.SetLastWriteTimeUtc(installer,DateTime.UtcNow.AddDays(-30));
+        Assert(!service.Inspect(install).UpdatePending,"Installer older than the installation is not reported as pending");
+        Assert(service.UpdateProcesses(install)==0,"No update installer reported while none runs");
+        var running=System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(installer,"-n 30 127.0.0.1") { UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true });
+        try {
+            Assert(service.UpdateProcesses(install)==1,"Running update installer is detected");
+            Fails(()=>service.Apply(install,Log),"Translation waits while an Antigravity update is being installed"); Assert(Hash(target)==original,"Installation is not modified during an update");
+        } finally { if(!running.HasExited) running.Kill(); running.WaitForExit(); running.Dispose(); }
+        string config=Path.Combine(install,"resources","app-update.yml"); File.WriteAllText(config,"provider: generic\nupdaterCacheDirName: 'other-updater'\n");
+        Assert(AntigravityUpdater.Cache(install,local)==Path.Combine(local,"other-updater"),"Updater cache name is read from app-update.yml");
+        File.Delete(config); File.Delete(installer);
+    }
     static int Main() {
         string root=Path.Combine(Path.GetTempPath(),"AntigravityRussian-tests-"+Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
         try {
             string install=Path.Combine(root,"app"), resources=Path.Combine(install,"resources"); Directory.CreateDirectory(resources);
             string target=Path.Combine(resources,"app.asar"), exe=Path.Combine(install,"Antigravity.exe"), state=Path.Combine(root,"state");
             Fixture(target,"1.0-test",false,false); Fuse(exe,false); string original=Hash(target), exeHash=Hash(exe);
-            var service=new PatchService(state); var initial=service.Inspect(install);
+            var service=new PatchService(state) { LocalData=Path.Combine(root,"local") }; var initial=service.Inspect(install);
             Assert(!initial.HasBackup&&!initial.IsRussian&&!Directory.Exists(state),"Inspect is read-only");
             var backed=service.Backup(install,Log); Assert(backed.HasBackup&&Hash(target)==original,"Backup does not modify installation");
             string backup=Path.Combine(backed.BackupDirectory,"original.asar"); Assert(Hash(backup)==original,"Original backup is byte exact");
@@ -87,6 +105,12 @@ static class Tests {
             service.Restore(install,Log); Assert(Hash(target)==updated,"Unrecorded update is never overwritten on restore");
             var third=service.Apply(install,Log); Assert(third.Version=="2.0-test"&&third.IsRussian,"Updated version is patched from its own source");
             service.Restore(install,Log); Assert(Hash(target)==updated,"Updated-version original restored exactly");
+            // Electron prefers resources/app over app.asar: a translated archive would never be shown.
+            string unpacked=Path.Combine(resources,"app"); Directory.CreateDirectory(unpacked); File.WriteAllText(Path.Combine(unpacked,"package.json"),"{}");
+            Assert(service.Inspect(install).AppFolder,"Unpacked resources/app folder is detected");
+            Fails(()=>service.Apply(install,Log),"Translation is refused while resources/app shadows the archive"); Assert(Hash(target)==updated,"Shadowed installation is not modified");
+            Directory.Delete(unpacked,true);
+            Updates(service,install,root,target,updated);
             File.AppendAllText(Path.Combine(third.BackupDirectory,"original.asar"),"corruption");
             Fails(()=>service.Apply(install,Log),"Corrupt backup is rejected"); Assert(Hash(target)==updated,"Corrupt backup never modifies installation");
             Fixture(target,"3.0-test",true,false); string unsupported=Hash(target);

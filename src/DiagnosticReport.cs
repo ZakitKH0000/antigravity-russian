@@ -7,7 +7,7 @@ namespace AntigravityRussian {
         readonly List<string> events=new List<string>();
         public void Record(string operation,Exception error) {
             // Only allowlisted event IDs and exception type names. Never copy raw messages or UI logs.
-            string code=new[]{"inspect","backup","apply","restore","import","discover","update","launch","rule"}.Contains(operation)?operation:"operation";
+            string code=new[]{"inspect","backup","apply","restore","import","discover","update","launch","rule","shortcut"}.Contains(operation)?operation:"operation";
             events.Add(DateTime.UtcNow.ToString("HH:mm:ss")+"Z "+code+" / "+(error==null?"OK":error.GetType().Name+" 0x"+error.HResult.ToString("X8")));
             if(events.Count>12)events.RemoveAt(0);
         }
@@ -24,6 +24,8 @@ namespace AntigravityRussian {
                 text.AppendLine("Русский интерфейс: "+installation.IsRussian);
                 text.AppendLine("Резервная копия: "+installation.HasBackup);
                 text.AppendLine("Неизвестная русификация: "+installation.UnknownTranslation);
+                text.AppendLine("Папка resources\\app: "+installation.AppFolder);
+                text.AppendLine("Скачано обновление Antigravity: "+installation.UpdatePending);
             }
             text.AppendLine("Последние действия:"); foreach(string e in events)text.AppendLine(e);
             text.AppendLine("Без переписки, токенов, имён пользователей, путей и содержимого файлов.");

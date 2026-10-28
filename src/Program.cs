@@ -7,8 +7,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Unofficial Russian interface patcher for Antigravity App")]
 [assembly: AssemblyCompany("Antigravity Russian contributors")]
 [assembly: AssemblyProduct("Antigravity Russian")]
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyVersion("1.2.1.0")]
+[assembly: AssemblyFileVersion("1.2.1.0")]
 [assembly: ComVisible(false)]
 [assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8",FrameworkDisplayName=".NET Framework 4.8")]
 namespace AntigravityRussian {
